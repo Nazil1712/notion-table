@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@revolist/react-datagrid": "^4.20.2",
+    "@revolist/revogrid-column-date": "^2.0.25",
+    "@revolist/revogrid-column-select": "^3.1.9",
     "@tailwindcss/vite": "^4.1.18",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
