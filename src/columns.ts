@@ -52,7 +52,6 @@ const dropdown = [
   },
 ];
 
-
 export const columns: (ColumnRegular | ColumnGrouping)[] = [
   {
     name: "Name group",
@@ -76,19 +75,29 @@ export const columns: (ColumnRegular | ColumnGrouping)[] = [
         cellTemplate: AgeCell,
       } as ColumnRegular,
       {
-        ...dropdown[0],
+        // ...dropdown[0],
         prop: "company",
         name: "Company",
         size: 150,
         columnType: "select",
+        columnTypeOptions: {
+          labelKey: "label",
+          valueKey: "value",
+          source: dropdown[0].source,
+        },
       },
       {
-        ...dropdown[1],
+        // ...dropdown[1],
         prop: "eyes",
         name: "Eyes",
         size: 120,
         cellTemplate: EyesCell,
         columnType: "select",
+        columnTypeOptions: {
+          labelKey: "label",
+          valueKey: "value",
+          source: dropdown[1].source,
+        },
       },
       {
         prop: "birthdate",
@@ -96,8 +105,8 @@ export const columns: (ColumnRegular | ColumnGrouping)[] = [
         size: 180,
         columnType: "date",
         direction: "left",
-        required: "true",
-        valueAsDate: "true",
+        required: true,
+        valueAsDate: true,
       },
       {
         prop: "a",
