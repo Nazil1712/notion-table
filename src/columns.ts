@@ -52,7 +52,7 @@ const dropdown = [
   },
 ];
 
-export const columns: (ColumnRegular | ColumnGrouping)[] = [
+export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
   {
     name: "Name group",
     children: [
@@ -61,7 +61,7 @@ export const columns: (ColumnRegular | ColumnGrouping)[] = [
         name: "Name",
         size: 220,
         cellTemplate: NameCell,
-        pin: "colPinStart",
+        // pin: "colPinStart",
       } as ColumnRegular,
     ],
   },
