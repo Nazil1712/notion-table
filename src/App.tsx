@@ -5,7 +5,7 @@ import {
 } from "@revolist/react-datagrid";
 import { users } from "./data";
 import { initialColumns, columnTypes } from "./columns";
-import { useEffect, useRef, useState } from "react";
+import React, { act, useEffect, useRef, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +20,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 import {
   ContextMenu,
@@ -43,18 +45,39 @@ import {
   ArrowLeftToLine,
   ArrowRightToLine,
   ArrowUp,
+  AtSign,
+  CalendarDays,
+  CircleArrowDown,
+  CircleDashed,
+  CircleMinus,
+  CircleUser,
+  Clock3,
   Component,
   Copy,
   EyeOff,
+  Hash,
+  Link,
+  List,
   ListFilter,
+  MapPin,
+  MoveUpRight,
+  Paperclip,
+  Phone,
   Pin,
   PinOff,
   Repeat2,
+  Search,
   Sigma,
+  SquareCheck,
+  SquareCheckBig,
+  SquareMousePointer,
   TableOfContents,
+  TextAlignStart,
   Trash2,
   Undo2,
+  UserRound,
 } from "lucide-react";
+import { Separator } from "@radix-ui/react-context-menu";
 
 type ColumnMenuState = {
   open: boolean;
@@ -75,6 +98,9 @@ const columnTypeMap: Record<string, ColumnType> = {
   a: "number",
   birthdate: "date",
 };
+const tags = Array.from({ length: 50 }).map(
+  (_, i, a) => `v1.2.0-beta.${a.length - i}`
+);
 
 export default function App() {
   const gridRef = useRef(null);
@@ -158,6 +184,7 @@ export default function App() {
     // menu: { prop: string; columnName: string }
     menu
   ) => {
+    e.preventDefault();
     const newHeader = e.target.value;
 
     // Header → prop
@@ -275,20 +302,39 @@ export default function App() {
     return flat.findIndex((col) => col.prop === prop);
   };
 
+  const hideActiveColumn = () => {
+    if (!activeColumn) return;
+
+    console.log("Hiding ", activeColumn);
+
+    setGridColumns((cols) =>
+      cols.map((group) =>
+        "children" in group
+          ? {
+              ...group,
+              children: group.children.map((col) =>
+                col.prop === activeColumn ? { ...col, hidden: true } : col
+              ),
+            }
+          : group
+      )
+    );
+  };
+
   const showUnfreeze =
     columnFreeze && frozenColumnProp && activeColumn === frozenColumnProp;
 
   const showFreeze = !showUnfreeze;
 
-  useEffect(() => {
+  /* useEffect(() => {
     if (menu.open) {
       setTimeout(() => {
         inputRef.current?.focus();
       }, 0);
     }
-  }, [menu.open]);
+  }, [menu.open]); */
 
-  useEffect(() => {
+  /* useEffect(() => {
     const closeMenu = () => setMenu((prev) => ({ ...prev, open: false }));
 
     if (menu.open) {
@@ -298,7 +344,7 @@ export default function App() {
     return () => {
       document.removeEventListener("click", closeMenu);
     };
-  }, [menu.open]);
+  }, [menu.open]); */
 
   return (
     <div className="p-6 h-screen bg-gray-50">
@@ -324,10 +370,10 @@ export default function App() {
             onOpenChange={(open) => setMenu((prev) => ({ ...prev, open }))}
           >
             <DropdownMenuContent
-              onCloseAutoFocus={(e) => e.preventDefault()}
-              onFocusOutside={(e) => e.preventDefault()}
-              onPointerDownOutside={(e) => e.preventDefault()}
-              onInteractOutside={(e) => e.preventDefault()}
+              // onCloseAutoFocus={(e) => e.preventDefault()}
+              // onFocusOutside={(e) => e.preventDefault()}
+              // onPointerDownOutside={(e) => e.preventDefault()}
+              // onInteractOutside={(e) => e.preventDefault()}     
               style={{
                 position: "fixed",
                 top: menu.y,
@@ -335,23 +381,120 @@ export default function App() {
               }}
               className="w-56"
             >
-              <DropdownMenuItem className="bg-transparent data-highlighted:bg-transparent ">
+              <DropdownMenuItem className="bg-transparent data-highlighted:bg-transparent "
+                onSelect={(e) => e.preventDefault()}
+              >
                 <TableOfContents />
                 <input
                   ref={inputRef}
                   type="text"
                   className="bg-gray-100 p-2 rounded-lg"
                   onChange={(e) => handleRename(e, menu)}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => e.stopPropagation()}
+                  // onPointerDown={(e) => e.stopPropagation()}
+                  // onClick={(e) => e.stopPropagation()}
                   value={menu.columnName}
                 />
               </DropdownMenuItem>
 
-              <DropdownMenuItem>
-                {" "}
-                <Repeat2 /> Change type
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  {" "}
+                  <Repeat2 /> Change type{" "}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <ScrollArea className="h-72 w-48 rounded-md">
+                    <DropdownMenuItem>
+                      {" "}
+                      <TextAlignStart /> Text
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Hash /> Number
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <CircleArrowDown /> Select
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <List /> Multi-select
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <CircleDashed /> Status
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <CalendarDays /> Date
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <UserRound /> Person
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Paperclip /> Files & media
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <SquareCheckBig /> Checkbox
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Link /> URL
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <AtSign /> Email
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Phone /> Phone
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Sigma /> Formula
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <MoveUpRight /> Relation
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Search /> Rollup
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Clock3 /> Created time
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <CircleUser /> Created by
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <Clock3 />
+                      Last edited time
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <CircleUser /> Last edited by
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <SquareMousePointer /> Button
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <MapPin /> Place
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      {" "}
+                      <span className="text-gray-600 flex">No</span> ID
+                    </DropdownMenuItem>
+                  </ScrollArea>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
 
               <DropdownMenuSeparator />
 
@@ -363,7 +506,7 @@ export default function App() {
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   {" "}
-                  <ArrowDownUp /> Sort
+                  <ArrowDownUp /> Sort{" "}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent>
                   <DropdownMenuItem
@@ -413,14 +556,13 @@ export default function App() {
                 </DropdownMenuItem>
               )}
 
-              {showUnfreeze  && (
+              {showUnfreeze && (
                 <DropdownMenuItem onClick={unfreezeAll}>
                   <PinOff /> Unfreeze columns
                 </DropdownMenuItem>
               )}
 
-              <DropdownMenuItem>
-                {" "}
+              <DropdownMenuItem onClick={hideActiveColumn}>
                 <EyeOff /> Hide
               </DropdownMenuItem>
 
