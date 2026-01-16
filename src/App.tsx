@@ -100,6 +100,7 @@ type ColumnMenuState = {
   columnId?: string;
   columnName?: string;
   prop?: string;
+  draftName?: string;
 };
 
 type ColumnType = "string" | "number" | "date";
@@ -134,6 +135,7 @@ export default function App() {
   const [gridColumns, setGridColumns] = useState(initialColumns);
   const [columnFreeze, setColumnFreeze] = useState(false);
   const [frozenColumnProp, setFrozenColumnProp] = useState<string | null>(null);
+  const [hiddenColumns, setHiddenColumns] = useState([]);
 
   const handleHeaderClick = (e) => {
     console.log("Event ==>", e);
@@ -151,6 +153,7 @@ export default function App() {
       columnId: prop,
       columnName: name,
       prop: prop,
+      draftName: name,
     });
 
     // console.log("Menu", menu);
@@ -158,14 +161,16 @@ export default function App() {
     // console.log("I am there");
   };
 
-  const renameDataKey = (rows: any[], oldKey: string, newKey: string) => {
-    return rows.map((row) => {
-      if (!(oldKey in row)) return row;
+  const renameDataKey = (rows: any[], oldProp: string, newProp: string) => {
+    console.log(oldProp, newProp, rows[0]);
 
-      const { [oldKey]: value, ...rest } = row;
+    return rows.map((row) => {
+      if (!(oldProp in row)) return row;
+
+      const { [oldProp]: value, ...rest } = row;
       return {
         ...rest,
-        [newKey]: value,
+        [newProp]: value,
       };
     });
   };
@@ -195,24 +200,50 @@ export default function App() {
     });
   };
 
-  const handleRename = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    // menu: { prop: string; columnName: string }
-    menu
-  ) => {
-    e.preventDefault();
-    const newHeader = e.target.value;
+  const commitRename = () => {
+    // const newHeader = newHeader;
+    // if (!newHeader) return;
+    const newHeader = menu.draftName;
+    console.log("New Header", newHeader);
+    if (!newHeader) {
+      // empty → cancel
+      setMenu((prev) => ({ ...prev, open: false }));
+      return;
+    }
 
-    // Header → prop
+    const oldProp = menu.prop;
     const newProp = newHeader.toLowerCase().replace(/\s+/g, "_");
 
-    setGridColumns((prev) => renameColumn(prev, menu.prop, newProp, newHeader));
+    // Rename column
+    setGridColumns((prev) => renameColumn(prev, oldProp, newProp, newHeader));
 
-    setGridData((prev) => renameDataKey(prev, menu.prop, newProp));
+    // Rename data key
+    setGridData((prev) => renameDataKey(prev, oldProp, newProp));
 
-    // Update menu reference (if needed)
-    menu.prop = newProp;
-    menu.columnName = newHeader;
+    // Close menu + sync state
+    setMenu((prev) => ({
+      ...prev,
+      open: false,
+      prop: newProp,
+      columnName: newHeader,
+      draftName: newHeader,
+    }));
+  };
+
+  const handleRenameKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRename(menu.draftName);
+    }
+
+    if (e.key === "Escape") {
+      // cancel rename
+      setMenu((prev) => ({
+        ...prev,
+        open: false,
+        draftName: prev.columnName,
+      }));
+    }
   };
 
   const sortGridData = (columnId: string, direction: "asc" | "desc") => {
@@ -318,22 +349,52 @@ export default function App() {
     return flat.findIndex((col) => col.prop === prop);
   };
 
+  /* const hideActiveColumn = () => {
+    if (!activeColumn) return;
+
+    setGridColumns((prev) =>
+      prev.map((col) => {
+        if ("children" in col) {
+          return {
+            ...col,
+            children: col.children.map((child) =>
+              child.prop === activeColumn ? { ...child, visible: false } : child
+            ),
+          };
+        }
+        return col.prop === activeColumn ? { ...col, visible: false } : col;
+      })
+    );
+  }; */
+
   const hideActiveColumn = () => {
     if (!activeColumn) return;
 
-    console.log("Hiding ", activeColumn);
+    setGridColumns((prev) =>
+      prev
+        .map((col) => {
+          if ("children" in col) {
+            const childToHide = col.children.find(
+              (c) => c.prop === activeColumn
+            );
 
-    setGridColumns((cols) =>
-      cols.map((group) =>
-        "children" in group
-          ? {
-              ...group,
-              children: group.children.map((col) =>
-                col.prop === activeColumn ? { ...col, hidden: true } : col
-              ),
+            if (childToHide) {
+              setHiddenColumns((h) => [...h, childToHide]);
+
+              const newChildren = col.children.filter(
+                (c) => c.prop !== activeColumn
+              );
+
+              // remove parent group if empty
+              if (newChildren.length === 0) return null;
+
+              return { ...col, children: newChildren };
             }
-          : group
-      )
+          }
+
+          return col;
+        })
+        .filter(Boolean)
     );
   };
 
@@ -362,7 +423,6 @@ export default function App() {
     setShowPopUp("");
     setMenu({ ...menu, open: false, prop: "" });
   };
-
 
   const duplicateColumnRecursive = (
     columns: (ColumnRegular | ColumnGrouping)[],
@@ -429,6 +489,15 @@ export default function App() {
     }
   }, [menu.open]); */
 
+  useEffect(() => {
+    if (menu.open) {
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select(); // optional but 🔥
+      });
+    }
+  }, [menu.open]);
+
   /* useEffect(() => {
     const closeMenu = () => setMenu((prev) => ({ ...prev, open: false }));
 
@@ -465,10 +534,15 @@ export default function App() {
             onOpenChange={(open) => setMenu((prev) => ({ ...prev, open }))}
           >
             <DropdownMenuContent
-              // onCloseAutoFocus={(e) => e.preventDefault()}
-              // onFocusOutside={(e) => e.preventDefault()}
-              // onPointerDownOutside={(e) => e.preventDefault()}
-              // onInteractOutside={(e) => e.preventDefault()}
+              // 🔥 outside click = commit
+              onPointerDownOutside={(e) => {
+                console.log("I am there");
+                e.preventDefault(); // stop Radix auto-close
+                commitRename();
+              }}
+              // keep focus stable
+              onCloseAutoFocus={(e) => e.preventDefault()}
+              onFocusOutside={(e) => e.preventDefault()}
               style={{
                 position: "fixed",
                 top: menu.y,
@@ -484,11 +558,23 @@ export default function App() {
                 <input
                   ref={inputRef}
                   type="text"
-                  className="bg-gray-100 p-2 rounded-lg"
-                  onChange={(e) => handleRename(e, menu)}
+                  className="bg-gray-100 p-2 rounded-lg outline-sky-600"
+                  // onChange={(e) => handleRename(e, menu)}
+                  onChange={(e) =>
+                    setMenu((prev) => ({
+                      ...prev,
+                      draftName: e.target.value,
+                    }))
+                  }
+                  onKeyDown={handleRenameKeyDown}
+                  onKeyDownCapture={(e) => {
+                    if (e.key !== "Enter" ) {
+                      e.stopPropagation(); // 🔥 stops Radix typeahead
+                    }
+                  }}
                   // onPointerDown={(e) => e.stopPropagation()}
                   // onClick={(e) => e.stopPropagation()}
-                  value={menu.columnName}
+                  value={menu.draftName}
                 />
               </DropdownMenuItem>
 
