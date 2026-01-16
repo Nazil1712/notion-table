@@ -24,6 +24,18 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
@@ -78,6 +90,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { Separator } from "@radix-ui/react-context-menu";
+import { Button } from "./components/ui/button";
+import PopupBox from "./common/Dialog";
 
 type ColumnMenuState = {
   open: boolean;
@@ -111,6 +125,8 @@ export default function App() {
     x: 0,
     y: 0,
   });
+
+  const [showPopUp, setShowPopUp] = useState("");
 
   const [activeColumn, setActiveColumn] = useState<string | null>(null);
 
@@ -326,6 +342,85 @@ export default function App() {
 
   const showFreeze = !showUnfreeze;
 
+  const removeColumnRecursive = (columns, propToRemove) => {
+    return columns
+      .map((col) => {
+        if (col.children) {
+          return {
+            ...col,
+            children: removeColumnRecursive(col.children, propToRemove),
+          };
+        }
+        return col;
+      })
+      .filter((col) => col.prop != propToRemove && col.children?.length != 0);
+  };
+
+  const handleDelete = (prop, columnName) => {
+    setGridColumns((prev) => removeColumnRecursive(prev, prop));
+
+    setShowPopUp("");
+    setMenu({ ...menu, open: false, prop: "" });
+  };
+
+
+  const duplicateColumnRecursive = (
+    columns: (ColumnRegular | ColumnGrouping)[],
+    targetProp: string
+  ) => {
+    const result: (ColumnRegular | ColumnGrouping)[] = [];
+
+    for (const col of columns) {
+      // clone column first (NO mutation)
+      let newCol = { ...col };
+
+      // handle grouped columns
+      if ("children" in col && col.children) {
+        newCol = {
+          ...col,
+          children: duplicateColumnRecursive(col.children, targetProp),
+        };
+      }
+
+      // push original
+      result.push(newCol);
+
+      // duplicate ONLY the target column
+      if ("prop" in col && col.prop === targetProp) {
+        const duplicated: ColumnRegular = {
+          ...(col as ColumnRegular),
+          prop: `${col.prop}_copy`,
+          name: `${col.name} (Copy)`,
+        };
+
+        result.push(duplicated);
+      }
+    }
+
+    return result;
+  };
+
+  const handleDuplicateColumn = () => {
+    if (!menu.prop) return;
+
+    // console.log("columns",gridColumns)
+    setGridColumns((prev) => duplicateColumnRecursive(prev, menu.prop));
+
+    setGridData((prevData) =>
+      prevData.map((row) => ({
+        ...row,
+        [`${menu.prop}_copy`]: row[menu.prop],
+      }))
+    );
+
+    setMenu({ ...menu, open: false, prop: "" });
+  };
+
+  /* useEffect(() => {
+    console.log("showPopUp =>", showPopUp);
+    console.log("menu => ", menu);
+  }, [showPopUp, menu]); */
+
   /* useEffect(() => {
     if (menu.open) {
       setTimeout(() => {
@@ -373,7 +468,7 @@ export default function App() {
               // onCloseAutoFocus={(e) => e.preventDefault()}
               // onFocusOutside={(e) => e.preventDefault()}
               // onPointerDownOutside={(e) => e.preventDefault()}
-              // onInteractOutside={(e) => e.preventDefault()}     
+              // onInteractOutside={(e) => e.preventDefault()}
               style={{
                 position: "fixed",
                 top: menu.y,
@@ -381,7 +476,8 @@ export default function App() {
               }}
               className="w-56"
             >
-              <DropdownMenuItem className="bg-transparent data-highlighted:bg-transparent "
+              <DropdownMenuItem
+                className="bg-transparent data-highlighted:bg-transparent "
                 onSelect={(e) => e.preventDefault()}
               >
                 <TableOfContents />
@@ -581,17 +677,30 @@ export default function App() {
                 {" "}
                 <ArrowRightToLine /> Insert right
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                {" "}
+              <DropdownMenuItem onClick={handleDuplicateColumn}>
                 <Copy /> Duplicate property
               </DropdownMenuItem>
-              <DropdownMenuItem className=" data-highlighted:text-red-400">
+
+              <DropdownMenuItem
+                className=" data-highlighted:text-red-400"
+                onClick={() => setShowPopUp(menu.prop)}
+              >
                 <Trash2 />
                 Delete property
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        <PopupBox
+          title={`Delete ${menu.columnName} Column ?`}
+          message={`Do you really Want to delete this column ? After Deleting You won't be able to see this column in table !`}
+          dangerOption={"Delete"}
+          cancelOption={"Cancel"}
+          dangerAction={() => handleDelete(menu.prop, menu.columnName)}
+          cancleAction={() => setShowPopUp("")}
+          showPopUp={showPopUp == menu.prop && showPopUp != ""}
+        />
 
         {/* <ContextMenuContent className="w-56">
               <ContextMenuItem className="bg-transparent data-highlighted:bg-transparent">
