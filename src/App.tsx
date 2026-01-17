@@ -92,6 +92,15 @@ import {
 import { Separator } from "@radix-ui/react-context-menu";
 import { Button } from "./components/ui/button";
 import PopupBox from "./common/Dialog";
+import { Dialog, DialogContent } from "./components/ui/dialog";
+import { PropertyPicker } from "./PropertyPicker";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "./components/ui/popover";
+import { ColumnWizard } from "./ColumnWizard";
+import { PopoverTrigger } from "@radix-ui/react-popover";
 
 type ColumnMenuState = {
   open: boolean;
@@ -101,6 +110,8 @@ type ColumnMenuState = {
   columnName?: string;
   prop?: string;
   draftName?: string;
+  anchorEl?: null | HTMLElement;
+  columnSize?: number;
 };
 
 type ColumnType = "string" | "number" | "date";
@@ -125,6 +136,7 @@ export default function App() {
     open: false,
     x: 0,
     y: 0,
+    anchorEl: null as HTMLElement | null,
   });
 
   const [showPopUp, setShowPopUp] = useState("");
@@ -137,13 +149,32 @@ export default function App() {
   const [frozenColumnProp, setFrozenColumnProp] = useState<string | null>(null);
   const [hiddenColumns, setHiddenColumns] = useState([]);
 
+  const [columnWizard, setColumnWizard] = useState<{
+    open: boolean;
+    tempProp: string | null;
+    anchorEl: HTMLElement | null;
+    position?: "left" | "right" | null;
+  }>({
+    open: false,
+    tempProp: null,
+    anchorEl: null,
+    position: null,
+  });
+
+  const virtualAnchorRef = useRef<{
+    getBoundingClientRect: () => DOMRect;
+  } | null>(null);
+
   const handleHeaderClick = (e) => {
     console.log("Event ==>", e);
     // console.log("Event Target ==>", e.target.clientX)
-    const { prop, name } = e.detail;
+    const { prop, name, size } = e.detail;
     const { clientX, clientY } = e.detail.originalEvent;
+    const headerEl = e.target;
 
     e.preventDefault();
+
+    if(!name) return;
 
     setActiveColumn(prop);
     setMenu({
@@ -154,11 +185,30 @@ export default function App() {
       columnName: name,
       prop: prop,
       draftName: name,
+      anchorEl: headerEl,
+      columnSize: size,
     });
 
     // console.log("Menu", menu);
 
     // console.log("I am there");
+  };
+
+  const POPOVER_WIDTH = 450;
+  const OFFSET_Y = 140;
+  const MARGIN = 16;
+
+  const popoverStyle = {
+    position: "relative",
+    top: (menu?.y ?? 0) - OFFSET_Y,
+    left: Math.max(
+      columnWizard.position === "right"
+        ? // 👉 insert RIGHT → popover after column
+          (menu?.x ?? 0) + (menu?.columnSize ?? 0) / 2 - POPOVER_WIDTH / 2 + 10
+        : // 👉 insert LEFT → popover before column
+          (menu?.x ?? 0) - POPOVER_WIDTH,
+      MARGIN
+    ),
   };
 
   const renameDataKey = (rows: any[], oldProp: string, newProp: string) => {
@@ -204,7 +254,7 @@ export default function App() {
     // const newHeader = newHeader;
     // if (!newHeader) return;
     const newHeader = menu.draftName;
-    console.log("New Header", newHeader);
+    // console.log("New Header", newHeader);
     if (!newHeader) {
       // empty → cancel
       setMenu((prev) => ({ ...prev, open: false }));
@@ -476,6 +526,142 @@ export default function App() {
     setMenu({ ...menu, open: false, prop: "" });
   };
 
+  const insertTempColumn = (targetProp, position, anchorEl) => {
+    const rect = anchorEl.getBoundingClientRect();
+
+    virtualAnchorRef.current = {
+      getBoundingClientRect: () => rect,
+    };
+    const tempProp = `__temp_${Date.now()}`;
+
+    setGridColumns((prev) =>
+      insertColumnAtPosition(prev, targetProp, position, {
+        prop: tempProp,
+        name: " ",
+        size: 250,
+        // attach cellTemplate / columnType based on property.type
+      })
+    );
+
+    setGridData((prev) =>
+      prev.map((row) => ({
+        ...row,
+        [tempProp]: "",
+      }))
+    );
+
+    setColumnWizard({
+      open: true,
+      tempProp,
+      anchorEl,
+      position,
+    });
+  };
+
+  const insertColumn = (property, panel) => {
+    const newProp = property.label.toLowerCase().replace(/\s+/g, "_");
+
+    setGridColumns((prev) =>
+      insertColumnAtPosition(prev, panel.targetProp, panel.position, {
+        prop: newProp,
+        name: property.label,
+        size: 150,
+        // attach cellTemplate / columnType based on property.type
+      })
+    );
+
+    setGridData((prev) =>
+      prev.map((row) => ({
+        ...row,
+        [newProp]: "",
+      }))
+    );
+  };
+
+  const insertColumnAtPosition = (columns, targetProp, position, newColumn) => {
+    const result = [];
+
+    for (const col of columns) {
+      if (col.children) {
+        result.push({
+          ...col,
+          children: insertColumnAtPosition(
+            col.children,
+            targetProp,
+            position,
+            newColumn
+          ),
+        });
+        continue;
+      }
+
+      if (col.prop === targetProp && position === "left") {
+        result.push(newColumn);
+      }
+
+      result.push(col);
+
+      if (col.prop === targetProp && position === "right") {
+        result.push(newColumn);
+      }
+    }
+
+    return result;
+  };
+
+  const replaceTempColumn = (columns, tempProp, newCol) =>
+    columns.map((col) => {
+      if (col.children) {
+        return {
+          ...col,
+          children: replaceTempColumn(col.children, tempProp, newCol),
+        };
+      }
+      return col.prop === tempProp ? newCol : col;
+    });
+
+  const finalizeColumn = ({ name, type }) => {
+    const newProp = name.toLowerCase().replace(/\s+/g, "_");
+    const tempProp = columnWizard.tempProp;
+
+    setGridColumns((prev) =>
+      replaceTempColumn(prev, tempProp, {
+        prop: newProp,
+        name,
+        size: 150,
+        // ...resolveColumnType(type),
+      })
+    );
+
+    setGridData((prev) =>
+      prev.map((row) => {
+        const { [tempProp]: _, ...rest } = row;
+        return {
+          ...rest,
+          [newProp]: "",
+        };
+      })
+    );
+
+    setColumnWizard({ open: false, tempProp: null, anchorEl: null });
+  };
+
+  const cancelTempColumn = () => {
+    const tempProp = columnWizard.tempProp;
+    if (!tempProp) return;
+
+    setGridColumns((prev) => removeColumnRecursive(prev, tempProp));
+
+    setGridData((prev) =>
+      prev.map((row) => {
+        const { [tempProp]: _, ...rest } = row;
+        return rest;
+      })
+    );
+
+    setColumnWizard({ open: false, tempProp: null, anchorEl: null });
+  };
+
   /* useEffect(() => {
     console.log("showPopUp =>", showPopUp);
     console.log("menu => ", menu);
@@ -493,7 +679,7 @@ export default function App() {
     if (menu.open) {
       requestAnimationFrame(() => {
         inputRef.current?.focus();
-        inputRef.current?.select(); // optional but 🔥
+        inputRef.current?.select();
       });
     }
   }, [menu.open]);
@@ -536,7 +722,7 @@ export default function App() {
             <DropdownMenuContent
               // 🔥 outside click = commit
               onPointerDownOutside={(e) => {
-                console.log("I am there");
+                // console.log("I am there");
                 e.preventDefault(); // stop Radix auto-close
                 commitRename();
               }}
@@ -550,233 +736,294 @@ export default function App() {
               }}
               className="w-56"
             >
-              <DropdownMenuItem
-                className="bg-transparent data-highlighted:bg-transparent "
-                onSelect={(e) => e.preventDefault()}
+              <ScrollArea
+                className=" 
+                max-h-[calc(100vh-120px)]
+                w-52
+                rounded-md"
               >
-                <TableOfContents />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  className="bg-gray-100 p-2 rounded-lg outline-sky-600"
-                  // onChange={(e) => handleRename(e, menu)}
-                  onChange={(e) =>
-                    setMenu((prev) => ({
-                      ...prev,
-                      draftName: e.target.value,
-                    }))
-                  }
-                  onKeyDown={handleRenameKeyDown}
-                  onKeyDownCapture={(e) => {
-                    if (e.key !== "Enter" ) {
-                      e.stopPropagation(); // 🔥 stops Radix typeahead
+                <DropdownMenuItem
+                  className="bg-transparent data-highlighted:bg-transparent "
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  <TableOfContents />
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="bg-gray-100 p-2 rounded-lg outline-sky-600"
+                    // onChange={(e) => handleRename(e, menu)}
+                    onChange={(e) =>
+                      setMenu((prev) => ({
+                        ...prev,
+                        draftName: e.target.value,
+                      }))
                     }
+                    onKeyDown={handleRenameKeyDown}
+                    onKeyDownCapture={(e) => {
+                      if (e.key !== "Enter") {
+                        e.stopPropagation(); // 🔥 stops Radix typeahead
+                      }
+                    }}
+                    // onPointerDown={(e) => e.stopPropagation()}
+                    // onClick={(e) => e.stopPropagation()}
+                    value={menu.draftName}
+                  />
+                </DropdownMenuItem>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    {" "}
+                    <Repeat2 /> Change type{" "}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <ScrollArea className="h-72 w-48 rounded-md">
+                      <DropdownMenuItem>
+                        {" "}
+                        <TextAlignStart /> Text
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Hash /> Number
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <CircleArrowDown /> Select
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <List /> Multi-select
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <CircleDashed /> Status
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <CalendarDays /> Date
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <UserRound /> Person
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Paperclip /> Files & media
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <SquareCheckBig /> Checkbox
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Link /> URL
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <AtSign /> Email
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Phone /> Phone
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Sigma /> Formula
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <MoveUpRight /> Relation
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Search /> Rollup
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Clock3 /> Created time
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <CircleUser /> Created by
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <Clock3 />
+                        Last edited time
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <CircleUser /> Last edited by
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <SquareMousePointer /> Button
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <MapPin /> Place
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        {" "}
+                        <span className="text-gray-600 flex">No</span> ID
+                      </DropdownMenuItem>
+                    </ScrollArea>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem>
+                  <ListFilter /> Filter
+                </DropdownMenuItem>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    {" "}
+                    <ArrowDownUp /> Sort{" "}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem
+                      onClick={() => sortGridData(menu.columnId, "asc")}
+                    >
+                      <ArrowUp /> Sort ascending
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                      onClick={() => sortGridData(menu.columnId, "desc")}
+                    >
+                      <ArrowDown /> Sort descending
+                    </DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    {" "}
+                    <Sigma /> Calculate
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem>None</DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Count</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem>Count all</DropdownMenuItem>
+                        <DropdownMenuItem>Count values</DropdownMenuItem>
+                        <DropdownMenuItem>Count unique values</DropdownMenuItem>
+                        <DropdownMenuItem>Count empty</DropdownMenuItem>
+                        <DropdownMenuItem>Count not empty</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>Percent</DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem>Percent empty</DropdownMenuItem>
+                        <DropdownMenuItem>Percent not empty</DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+
+                {showFreeze && (
+                  <DropdownMenuItem onClick={freezeTillColumn}>
+                    <Pin /> Freeze
+                  </DropdownMenuItem>
+                )}
+
+                {showUnfreeze && (
+                  <DropdownMenuItem onClick={unfreezeAll}>
+                    <PinOff /> Unfreeze columns
+                  </DropdownMenuItem>
+                )}
+
+                <DropdownMenuItem onClick={hideActiveColumn}>
+                  <EyeOff /> Hide
+                </DropdownMenuItem>
+
+                <DropdownMenuItem>
+                  {" "}
+                  <Undo2 /> Wrap content
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!menu.prop || !menu.anchorEl) return;
+
+                    insertTempColumn(menu.prop, "left", menu.anchorEl);
                   }}
-                  // onPointerDown={(e) => e.stopPropagation()}
-                  // onClick={(e) => e.stopPropagation()}
-                  value={menu.draftName}
-                />
-              </DropdownMenuItem>
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  {" "}
-                  <Repeat2 /> Change type{" "}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <ScrollArea className="h-72 w-48 rounded-md">
-                    <DropdownMenuItem>
-                      {" "}
-                      <TextAlignStart /> Text
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Hash /> Number
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <CircleArrowDown /> Select
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <List /> Multi-select
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <CircleDashed /> Status
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <CalendarDays /> Date
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <UserRound /> Person
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Paperclip /> Files & media
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <SquareCheckBig /> Checkbox
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Link /> URL
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <AtSign /> Email
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Phone /> Phone
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Sigma /> Formula
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <MoveUpRight /> Relation
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Search /> Rollup
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Clock3 /> Created time
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <CircleUser /> Created by
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <Clock3 />
-                      Last edited time
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <CircleUser /> Last edited by
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <SquareMousePointer /> Button
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <MapPin /> Place
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      {" "}
-                      <span className="text-gray-600 flex">No</span> ID
-                    </DropdownMenuItem>
-                  </ScrollArea>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem>
-                {" "}
-                <ListFilter /> Filter
-              </DropdownMenuItem>
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  {" "}
-                  <ArrowDownUp /> Sort{" "}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem
-                    onClick={() => sortGridData(menu.columnId, "asc")}
-                  >
-                    <ArrowUp /> Sort ascending
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem
-                    onClick={() => sortGridData(menu.columnId, "desc")}
-                  >
-                    <ArrowDown /> Sort descending
-                  </DropdownMenuItem>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  {" "}
-                  <Sigma /> Calculate
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  <DropdownMenuItem>None</DropdownMenuItem>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Count</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuItem>Count all</DropdownMenuItem>
-                      <DropdownMenuItem>Count values</DropdownMenuItem>
-                      <DropdownMenuItem>Count unique values</DropdownMenuItem>
-                      <DropdownMenuItem>Count empty</DropdownMenuItem>
-                      <DropdownMenuItem>Count not empty</DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                  <DropdownMenuSub>
-                    <DropdownMenuSubTrigger>Percent</DropdownMenuSubTrigger>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuItem>Percent empty</DropdownMenuItem>
-                      <DropdownMenuItem>Percent not empty</DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuSub>
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-
-              {showFreeze && (
-                <DropdownMenuItem onClick={freezeTillColumn}>
-                  <Pin /> Freeze
+                >
+                  <ArrowLeftToLine /> Insert left
                 </DropdownMenuItem>
-              )}
 
-              {showUnfreeze && (
-                <DropdownMenuItem onClick={unfreezeAll}>
-                  <PinOff /> Unfreeze columns
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (!menu.prop || !menu.anchorEl) return;
+
+                    insertTempColumn(menu.prop, "right", menu.anchorEl);
+
+                    /* setInsertPanel({
+                      open: true,
+                      position: "right",
+                      targetProp: menu.prop,
+                    }); */
+                  }}
+                >
+                  <ArrowRightToLine /> Insert right
                 </DropdownMenuItem>
-              )}
+                <DropdownMenuItem onClick={handleDuplicateColumn}>
+                  <Copy /> Duplicate property
+                </DropdownMenuItem>
 
-              <DropdownMenuItem onClick={hideActiveColumn}>
-                <EyeOff /> Hide
-              </DropdownMenuItem>
-
-              <DropdownMenuItem>
-                {" "}
-                <Undo2 /> Wrap content
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuItem>
-                {" "}
-                <ArrowLeftToLine /> Insert left
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                {" "}
-                <ArrowRightToLine /> Insert right
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDuplicateColumn}>
-                <Copy /> Duplicate property
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                className=" data-highlighted:text-red-400"
-                onClick={() => setShowPopUp(menu.prop)}
-              >
-                <Trash2 />
-                Delete property
-              </DropdownMenuItem>
+                <DropdownMenuItem
+                  className=" data-highlighted:text-red-400"
+                  onClick={() => setShowPopUp(menu.prop)}
+                >
+                  <Trash2 />
+                  Delete property
+                </DropdownMenuItem>
+              </ScrollArea>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+
+        {/* <Dialog
+          open={insertPanel.open}
+          onOpenChange={(open) => setInsertPanel((prev) => ({ ...prev, open }))}
+        >
+          <DialogContent className="p-0 w-[450px] ">
+            <PropertyPicker
+              onSelect={(property) => {
+                insertColumn(property, insertPanel);
+                setInsertPanel({
+                  open: false,
+                  position: null,
+                  targetProp: null,
+                });
+              }}
+            />
+          </DialogContent>
+        </Dialog> */}
+
+        <Popover
+          open={columnWizard.open}
+          onOpenChange={(open) => !open && cancelTempColumn()}
+        >
+          <PopoverAnchor ref={virtualAnchorRef} />
+          <PopoverContent
+            className={`
+              w-[450px] p-3
+              ${columnWizard.position === "left" && "origin-right"}
+              ${columnWizard.position === "right" && "origin-left"}
+            `}
+            style={popoverStyle}
+          >
+            <ColumnWizard
+              onConfirm={finalizeColumn}
+              onCancel={cancelTempColumn}
+            />
+          </PopoverContent>
+        </Popover>
 
         <PopupBox
           title={`Delete ${menu.columnName} Column ?`}
