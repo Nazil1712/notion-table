@@ -60,6 +60,7 @@ export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
         prop: "name",
         name: "Name",
         size: 220,
+        columnType: "string",
         cellTemplate: NameCell,
         // pin: "colPinStart",
       } as ColumnRegular,
@@ -72,6 +73,7 @@ export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
         prop: "age",
         name: "Age",
         size: 120,
+        columnType: "number",
         cellTemplate: AgeCell,
       } as ColumnRegular,
       {
@@ -80,6 +82,7 @@ export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
         name: "Company",
         size: 150,
         columnType: "select",
+        editable: true,
         columnTypeOptions: {
           labelKey: "label",
           valueKey: "value",
@@ -93,6 +96,7 @@ export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
         size: 120,
         cellTemplate: EyesCell,
         columnType: "select",
+        editable: true,
         columnTypeOptions: {
           labelKey: "label",
           valueKey: "value",
@@ -111,11 +115,14 @@ export const initialColumns: (ColumnRegular | ColumnGrouping)[] = [
       {
         prop: "a",
         name: "A",
+        columnType: "number",
         size: 120,
       } as ColumnRegular,
     ],
   },
 ];
+
+// console.log("COLUMNS DEBUG", initialColumns);
 
 export const columnTypes = {
   select: new SelectTypePlugin(),
